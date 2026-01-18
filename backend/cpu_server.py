@@ -9,52 +9,75 @@ import psutil
 from aiohttp import web
 import aiohttp_cors
 import time
+import threading
+import sys
+import os
+
+# Add current directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Global CPU state for accurate readings
 class CPUMonitor:
     def __init__(self):
-        self.last_cpu_times = psutil.cpu_times()
-        self.last_time = time.time()
         self.current_cpu = 0.0
         self.cpu_history = []
-        self.buffer_size = 3
+        self.buffer_size = 10  # Increased for smoother readings
+        # Prime the pump with initial call
+        psutil.cpu_percent(interval=0.1)
 
     def get_cpu_percent(self):
-        """Calculate CPU percentage manually for accuracy"""
-        current_times = psutil.cpu_times()
-        current_time = time.time()
+        """Get CPU percentage with stronger smoothing"""
+        try:
+            # Use psutil's built-in cpu_percent (non-blocking after first call)
+            cpu_percent = psutil.cpu_percent(interval=None)
+            
+            # Strong smoothing - more history
+            self.cpu_history.append(cpu_percent)
+            if len(self.cpu_history) > self.buffer_size:
+                self.cpu_history.pop(0)
 
-        time_delta = current_time - self.last_time
-
-        if time_delta > 0:
-            # Calculate the difference in CPU times
-            user_delta = current_times.user - self.last_cpu_times.user
-            system_delta = current_times.system - self.last_cpu_times.system
-            idle_delta = current_times.idle - self.last_cpu_times.idle
-
-            # Total CPU time
-            total_delta = user_delta + system_delta + idle_delta
-
-            if total_delta > 0:
-                # Calculate percentage (user + system) / total
-                cpu_percent = ((user_delta + system_delta) / total_delta) * 100
-                cpu_percent = max(0, min(100, cpu_percent))  # Clamp to 0-100
-
-                # Light smoothing
-                self.cpu_history.append(cpu_percent)
-                if len(self.cpu_history) > self.buffer_size:
-                    self.cpu_history.pop(0)
-
-                # Simple moving average
-                self.current_cpu = sum(self.cpu_history) / len(self.cpu_history)
-
-        self.last_cpu_times = current_times
-        self.last_time = current_time
+            # Weighted moving average (prioritize recent values slightly)
+            weights = [1 + (i / self.buffer_size) for i in range(len(self.cpu_history))]
+            weighted_sum = sum(h * w for h, w in zip(self.cpu_history, weights))
+            self.current_cpu = weighted_sum / sum(weights)
+            
+            # Clamp to 0-100
+            self.current_cpu = max(0, min(100, self.current_cpu))
+        except Exception as e:
+            print(f"Error reading CPU: {e}")
+            # Return last known value
+            pass
 
         return round(self.current_cpu, 1)
 
-# Global monitor instance
+
+# Track connected websockets so we can broadcast events (note starts, etc.)
+connected_websockets = set()
+
+
+async def broadcast_event(event: dict):
+    """Send an event dict to all connected websocket clients (safe)."""
+    # Copy to avoid mutation during iteration
+    clients = list(connected_websockets)
+    if not clients:
+        return
+
+    for ws in clients:
+        try:
+            if not ws.closed:
+                await ws.send_json(event)
+        except Exception as e:
+            # Remove bad sockets
+            try:
+                connected_websockets.discard(ws)
+            except Exception:
+                pass
+            print(f"Failed to send event to client: {e}")
+
+# Global monitor instance and workload state
 cpu_monitor = CPUMonitor()
+workload_thread = None
+workload_active = False
 
 async def cpu_websocket_handler(request):
     """WebSocket handler for streaming CPU data"""
@@ -63,30 +86,43 @@ async def cpu_websocket_handler(request):
 
     print("Client connected to CPU WebSocket")
 
+    # register
+    connected_websockets.add(ws)
+
     try:
         while not ws.closed:
-            # Get accurate CPU percentage
-            cpu_percent = cpu_monitor.get_cpu_percent()
+            try:
+                # Get accurate CPU percentage
+                cpu_percent = cpu_monitor.get_cpu_percent()
 
-            # Also get per-core for reference (using psutil's built-in)
-            per_cpu = psutil.cpu_percent(interval=None, percpu=True)
+                # Also get per-core for reference
+                per_cpu = psutil.cpu_percent(interval=None, percpu=True)
 
-            # Get memory info
-            memory = psutil.virtual_memory()
+                # Get memory info
+                memory = psutil.virtual_memory()
 
-            data = {
-                "cpu": cpu_percent,
-                "per_cpu": [round(c, 1) for c in per_cpu],
-                "memory_percent": round(memory.percent, 1),
-                "timestamp": time.time()
-            }
+                data = {
+                    "cpu": cpu_percent,
+                    "per_cpu": [round(c, 1) for c in per_cpu],
+                    "memory_percent": round(memory.percent, 1),
+                    "timestamp": time.time()
+                }
 
-            await ws.send_json(data)
-            await asyncio.sleep(0.15)  # 150ms = ~7fps for slower, more compact updates
+                await ws.send_json(data)
+                await asyncio.sleep(0.15)  # 150ms update interval
+            except Exception as e:
+                print(f"Error in WebSocket loop: {e}")
+                await asyncio.sleep(0.1)
+                break
 
     except Exception as e:
         print(f"WebSocket error: {e}")
     finally:
+        # unregister
+        try:
+            connected_websockets.discard(ws)
+        except Exception:
+            pass
         print("Client disconnected from CPU WebSocket")
 
     return ws
@@ -109,6 +145,43 @@ async def health_handler(request):
     """Health check endpoint"""
     return web.json_response({"status": "ok"})
 
+async def start_workload_handler(request):
+    """Start the Twinkle Twinkle workload"""
+    global workload_thread, workload_active
+    
+    try:
+        import test_workloads
+
+        if workload_active:
+            return web.json_response({"error": "Workload already running"}, status=400)
+
+        # Provide a thread-safe notifier so test_workloads can announce note starts
+        loop = asyncio.get_running_loop()
+
+        def _notify(note, index=None):
+            # Schedule broadcast from background threads safely
+            event = {"event": "note_start", "note": note, "index": index, "timestamp": time.time()}
+            try:
+                asyncio.run_coroutine_threadsafe(broadcast_event(event), loop)
+            except Exception as e:
+                print(f"Failed to schedule note broadcast: {e}")
+
+        # Attach callback so the workload code can call it
+        test_workloads.note_callback = _notify
+
+        workload_active = True
+        workload_thread = threading.Thread(target=test_workloads.play_twinkle_twinkle, daemon=True)
+        workload_thread.start()
+
+        return web.json_response({"status": "Twinkle Twinkle started"})
+    except Exception as e:
+        workload_active = False
+        return web.json_response({"error": str(e)}, status=500)
+
+async def workload_status_handler(request):
+    """Check if workload is running"""
+    return web.json_response({"active": workload_active})
+
 def create_app():
     app = web.Application()
 
@@ -126,6 +199,8 @@ def create_app():
     app.router.add_get("/ws", cpu_websocket_handler)
     app.router.add_get("/cpu", cpu_http_handler)
     app.router.add_get("/health", health_handler)
+    app.router.add_post("/workload/start", start_workload_handler)
+    app.router.add_get("/workload/status", workload_status_handler)
 
     # Apply CORS to all routes except WebSocket
     for route in list(app.router.routes()):
@@ -135,8 +210,8 @@ def create_app():
     return app
 
 if __name__ == "__main__":
-    print("Starting CPU Monitor Server on http://localhost:8766")
+    print("Starting CPU Monitor Server on http://0.0.0.0:8766")
     print("WebSocket endpoint: ws://localhost:8766/ws")
     print("HTTP endpoint: http://localhost:8766/cpu")
     app = create_app()
-    web.run_app(app, host="localhost", port=8766)
+    web.run_app(app, host="0.0.0.0", port=8766)

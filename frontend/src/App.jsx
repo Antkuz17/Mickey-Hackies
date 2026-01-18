@@ -20,11 +20,13 @@ function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
   const [activeNoteIndex, setActiveNoteIndex] = useState(0);
+<<<<<<< Updated upstream
   const [barPosition, setBarPosition] = useState(0);
   const [viewMode, setViewMode] = useState('dashboard'); // 'dashboard', 'tree', 'collision', 'fractal', or 'collatz'
+=======
+  const [viewMode, setViewMode] = useState('dashboard'); // 'dashboard' or 'tree'
+>>>>>>> Stashed changes
 
-  const canvasRef = useRef(null);
-  const animationRef = useRef(null);
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
   const noteBarRef = useRef(null);
@@ -47,6 +49,15 @@ function App() {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+
+        // Handle note events from the server
+        if (data.event === 'note_start') {
+          if (typeof data.index === 'number') {
+            setActiveNoteIndex(data.index);
+          }
+          return;
+        }
+
         const cpuValue = data.cpu;
 
         // Update CPU directly (no interpolation)
@@ -108,204 +119,7 @@ function App() {
     };
   }, [isPlaying, connectWebSocket]);
 
-  // Canvas animation for the stage
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    const resize = () => {
-      canvas.width = canvas.offsetWidth * window.devicePixelRatio;
-      canvas.height = canvas.offsetHeight * window.devicePixelRatio;
-      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-    };
-    resize();
-    window.addEventListener('resize', resize);
-
-    let particles = [];
-    const particleCount = 50;
-
-    // Initialize particles
-    for (let i = 0; i < particleCount; i++) {
-      particles.push({
-        x: Math.random() * canvas.offsetWidth,
-        y: Math.random() * canvas.offsetHeight,
-        vx: (Math.random() - 0.5) * 2,
-        vy: (Math.random() - 0.5) * 2,
-        radius: Math.random() * 3 + 1,
-        hue: Math.random() * 60 + 180,
-      });
-    }
-
-    const animate = () => {
-      const width = canvas.offsetWidth;
-      const height = canvas.offsetHeight;
-
-      // Slower fade for smoother trails
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.05)';
-      ctx.fillRect(0, 0, width, height);
-
-      const cpuFactor = currentCPU / 100;
-
-      const centerX = width / 2;
-      const centerY = height / 2;
-      const baseRadius = Math.min(width, height) * 0.15;
-      const radius = baseRadius + cpuFactor * 50;
-      // Slow down time by 4x
-      const time = Date.now() * 0.00025;
-
-      // Outer glow
-      const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius * 2);
-      gradient.addColorStop(0, `hsla(${180 + cpuFactor * 100}, 100%, 60%, 0.3)`);
-      gradient.addColorStop(0.5, `hsla(${280 + cpuFactor * 50}, 100%, 50%, 0.1)`);
-      gradient.addColorStop(1, 'transparent');
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, radius * 2, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Draw rotating polygon based on algorithm
-      const sides = selectedAlgorithm === 'compute' ? 6 :
-        selectedAlgorithm === 'sorting' ? 4 :
-          selectedAlgorithm === 'matrix' ? 8 : 5;
-
-      ctx.save();
-      ctx.translate(centerX, centerY);
-      // Slower rotation (reduced from 0.5 + cpuFactor to 0.1 + cpuFactor * 0.2)
-      ctx.rotate(time * (0.1 + cpuFactor * 0.2));
-
-      // Multiple layers of the shape
-      for (let layer = 3; layer >= 0; layer--) {
-        const layerRadius = radius * (1 + layer * 0.2);
-        const alpha = 0.3 - layer * 0.05;
-
-        ctx.beginPath();
-        for (let i = 0; i <= sides; i++) {
-          const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
-          // Slower wobble (reduced from time * 3 to time * 0.8)
-          const wobble = Math.sin(time * 0.8 + i) * cpuFactor * 10;
-          const x = Math.cos(angle) * (layerRadius + wobble);
-          const y = Math.sin(angle) * (layerRadius + wobble);
-
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        ctx.closePath();
-
-        ctx.strokeStyle = `hsla(${180 + cpuFactor * 100 + layer * 30}, 100%, ${60 + layer * 10}%, ${alpha})`;
-        ctx.lineWidth = 3 - layer * 0.5;
-        ctx.stroke();
-      }
-
-      // Inner filled shape
-      ctx.beginPath();
-      for (let i = 0; i <= sides; i++) {
-        const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
-        const x = Math.cos(angle) * radius * 0.5;
-        const y = Math.sin(angle) * radius * 0.5;
-
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.closePath();
-
-      const innerGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, radius * 0.5);
-      innerGradient.addColorStop(0, `hsla(${320}, 100%, 60%, 0.8)`);
-      innerGradient.addColorStop(1, `hsla(${200}, 100%, 50%, 0.4)`);
-      ctx.fillStyle = innerGradient;
-      ctx.fill();
-
-      ctx.restore();
-
-      // Update and draw particles - slower movement
-      particles.forEach((p, i) => {
-        // Reduced particle speed (from 1 + cpuFactor * 2 to 0.3 + cpuFactor * 0.5)
-        p.x += p.vx * (0.3 + cpuFactor * 0.5);
-        p.y += p.vy * (0.3 + cpuFactor * 0.5);
-
-        const dx = centerX - p.x;
-        const dy = centerY - p.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist > radius * 3) {
-          p.vx += dx * 0.00005;
-          p.vy += dy * 0.00005;
-        }
-
-        if (p.x < 0 || p.x > width) p.vx *= -1;
-        if (p.y < 0 || p.y > height) p.vy *= -1;
-
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.radius * (1 + cpuFactor), 0, Math.PI * 2);
-        ctx.fillStyle = `hsla(${p.hue + cpuFactor * 60}, 100%, 70%, ${0.5 + cpuFactor * 0.3})`;
-        ctx.fill();
-
-        particles.slice(i + 1).forEach(p2 => {
-          const d = Math.sqrt((p.x - p2.x) ** 2 + (p.y - p2.y) ** 2);
-          if (d < 100) {
-            ctx.beginPath();
-            ctx.moveTo(p.x, p.y);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.strokeStyle = `hsla(${200}, 100%, 60%, ${(1 - d / 100) * 0.2})`;
-            ctx.lineWidth = 0.5;
-            ctx.stroke();
-          }
-        });
-      });
-
-      animationRef.current = requestAnimationFrame(animate);
-    };
-
-    if (isPlaying) {
-      animate();
-    }
-
-    return () => {
-      window.removeEventListener('resize', resize);
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-    };
-  }, [selectedAlgorithm, isPlaying, currentCPU]);
-
-  // Note bar animation - moves based on CPU activity
-  useEffect(() => {
-    if (!isPlaying) return;
-
-    let frameId;
-    let lastTime = Date.now();
-
-    const animateBar = () => {
-      const now = Date.now();
-      const delta = now - lastTime;
-
-      // Speed based on CPU (higher CPU = faster)
-      const speed = 0.05 + (currentCPU / 100) * 0.15;
-
-      setBarPosition(prev => {
-        const newPos = prev + speed * delta * 0.01;
-        // Reset when bar reaches end
-        if (newPos >= 100) {
-          return 0;
-        }
-        return newPos;
-      });
-
-      // Update active note based on bar position
-      setActiveNoteIndex(Math.floor((barPosition / 100) * NOTES.length) % NOTES.length);
-
-      lastTime = now;
-      noteBarRef.current = requestAnimationFrame(animateBar);
-    };
-
-    noteBarRef.current = requestAnimationFrame(animateBar);
-
-    return () => {
-      if (noteBarRef.current) {
-        cancelAnimationFrame(noteBarRef.current);
-      }
-    };
-  }, [isPlaying, currentCPU, barPosition]);
+  // Note events are now driven by server broadcasts (see ws.onmessage)
 
   const getCPUColor = (value) => {
     if (value < 30) return 'text-cyan-400';
@@ -411,8 +225,34 @@ function App() {
               </div>
             </div>
 
+            {/* Play Controls */}
+            <div className="glass-panel p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Music className="w-4 h-4 text-pink-400" />
+                <p className="text-xs text-slate-500 uppercase tracking-wider">Twinkle Twinkle Performance</p>
+              </div>
+              <button
+                onClick={async () => {
+                  try {
+                    const response = await fetch('http://localhost:8766/workload/start', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                    });
+                    if (response.ok) {
+                      console.log('Twinkle Twinkle started!');
+                    }
+                  } catch (err) {
+                    console.error('Failed to start workload:', err);
+                  }
+                }}
+                className="w-full px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 text-white rounded-lg font-medium text-sm transition-all duration-200 active:scale-95"
+              >
+                ▶ Play Twinkle Twinkle
+              </button>
+            </div>
+
             {/* Live Graph */}
-            <div className="glass-panel p-4 h-[180px]">
+            <div className="glass-panel p-4 h-[280px]">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-xs text-slate-500 uppercase tracking-wider">CPU History</p>
                 <div className="flex items-center gap-1">
@@ -488,110 +328,87 @@ function App() {
             </div>
 
             {/* Sheet Music Display */}
-            <div className="glass-panel p-4">
+            <div className="p-4">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <Music className="w-4 h-4 text-purple-400" />
-                  <p className="text-xs text-slate-500 uppercase tracking-wider">Sheet Music</p>
+                  <p className="text-xs text-slate-500 uppercase tracking-wider">Sheet Music - Twinkle Twinkle</p>
                 </div>
                 <span className="text-sm text-cyan-400 font-bold">
-                  {NOTES[activeNoteIndex]}4
+                  Now: {NOTES[activeNoteIndex]}4
                 </span>
               </div>
 
-              {/* Sheet music staff */}
-              <div className="relative h-24 bg-slate-900/50 rounded-lg overflow-hidden">
-                {/* Treble clef area */}
-                <div className="absolute left-2 top-1/2 -translate-y-1/2 text-3xl text-slate-600 font-serif select-none">
-                  𝄞
-                </div>
-
-                {/* Staff lines (5 lines) */}
-                <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-                  {[0, 1, 2, 3, 4].map(i => (
-                    <line
-                      key={i}
-                      x1="40"
-                      y1={20 + i * 16}
-                      x2="100%"
-                      y2={20 + i * 16}
-                      stroke="#475569"
-                      strokeWidth="1"
-                    />
+              {/* Scrolling sheet music with staff lines */}
+              <div className="relative bg-white rounded-lg overflow-hidden border-2 border-slate-400 shadow-lg" style={{ height: '180px' }}>
+                {/* Staff lines (5 horizontal lines) */}
+                <svg className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'none' }}>
+                  {[30, 60, 90, 120, 150].map(y => (
+                    <line key={y} x1="0" y1={y} x2="100%" y2={y} stroke="#000" strokeWidth="2" />
                   ))}
                 </svg>
 
-                {/* Notes on staff - positioned based on note (C=bottom, B=top) */}
-                <div className="absolute left-10 right-4 top-0 bottom-0 flex items-center">
-                  {NOTES.map((note, i) => {
-                    // Position notes on staff (C is lowest, B is highest)
-                    // Staff positions: B=line1, A=space1, G=line2, F=space2, E=line3, D=space3, C=line4
-                    const notePositions = { C: 84, D: 76, E: 68, F: 60, G: 52, A: 44, B: 36 };
-                    const yPos = notePositions[note];
-                    const xPos = 40 + (i * ((100 - 40) / NOTES.length)) + 20;
+                {/* Notes scrolling container - smooth scroll to center active note */}
+                <div 
+                  className="absolute left-0 top-0 h-full flex items-stretch"
+                  style={{
+                    transform: `translateX(calc(50% - ${(activeNoteIndex * 100) + 50}px))`,
+                    transition: 'transform 0.4s ease-out',
+                  }}
+                >
+                  {/* Twinkle Twinkle sequence */}
+                  {['C', 'C', 'G', 'G', 'A', 'A', 'G', 'F', 'F', 'E', 'E', 'D', 'D', 'C'].map((note, i) => {
+                    const noteColors = {
+                      'C': '#0891b2',
+                      'D': '#059669',
+                      'E': '#d97706',
+                      'F': '#ea580c',
+                      'G': '#db2777',
+                      'A': '#7c3aed',
+                      'B': '#dc2626',
+                    };
+
+                    // Map notes to Y positions on staff (ledger lines at 30, 60, 90, 120, 150)
+                    const noteYMap = {
+                      'B': 0,    // above top line
+                      'A': 15,   // space above top
+                      'G': 30,   // top line
+                      'F': 45,   // space
+                      'E': 60,   // middle line
+                      'D': 75,   // space
+                      'C': 90,   // middle line
+                    };
+
+                    const yPos = noteYMap[note] || 90;
 
                     return (
-                      <div
-                        key={note}
-                        className="absolute transition-all duration-200"
-                        style={{
-                          left: `${(i / NOTES.length) * 85 + 12}%`,
-                          top: `${yPos - 8}px`,
+                      <div 
+                        key={i} 
+                        className="flex-shrink-0 flex items-start justify-center relative"
+                        style={{ 
+                          width: 100,
+                          height: 180,
                         }}
                       >
-                        {/* Note head (oval) */}
-                        <div
-                          className={`w-5 h-4 rounded-full border-2 transition-all duration-150 ${i === activeNoteIndex
-                            ? 'bg-cyan-400 border-cyan-400 shadow-lg shadow-cyan-500/50 scale-125'
-                            : 'bg-transparent border-slate-500'
-                            }`}
-                          style={{
-                            transform: 'rotate(-20deg)',
-                          }}
-                        />
-                        {/* Note stem */}
-                        <div
-                          className={`absolute w-0.5 h-8 transition-all duration-150 ${i === activeNoteIndex ? 'bg-cyan-400' : 'bg-slate-500'
-                            }`}
-                          style={{
-                            left: note === 'C' || note === 'D' || note === 'E' ? '16px' : '-2px',
-                            top: note === 'C' || note === 'D' || note === 'E' ? '-28px' : '12px',
-                          }}
-                        />
-                        {/* Note letter label */}
+                        {/* Crotchet note positioned on staff */}
                         <span
-                          className={`absolute text-[10px] font-bold transition-all duration-150 ${i === activeNoteIndex ? 'text-pink-400' : 'text-slate-600'
-                            }`}
                           style={{
-                            left: '50%',
-                            transform: 'translateX(-50%)',
-                            top: note === 'C' || note === 'D' || note === 'E' ? '16px' : '-20px',
+                            fontSize: i === activeNoteIndex ? 72 : 60,
+                            color: i === activeNoteIndex ? noteColors[note] : '#1f2937',
+                            position: 'absolute',
+                            top: `${yPos}px`,
+                            transform: 'translateY(-50%)',
+                            transition: 'all 0.2s ease-out',
+                            textShadow: i === activeNoteIndex ? `0 0 16px ${noteColors[note]}99` : 'none',
+                            fontWeight: i === activeNoteIndex ? 'bold' : 'normal',
                           }}
                         >
-                          {note}
+                          ♩
                         </span>
                       </div>
                     );
                   })}
                 </div>
-
-                {/* Playhead bar */}
-                <div
-                  className="absolute top-2 bottom-2 w-0.5 bg-gradient-to-b from-pink-500 via-purple-500 to-cyan-400 shadow-lg shadow-pink-500/30 z-20 rounded-full"
-                  style={{
-                    left: `${10 + barPosition * 0.85}%`,
-                    transition: 'left 0.05s linear',
-                  }}
-                />
-
-                {/* Glow behind playhead */}
-                <div
-                  className="absolute top-0 bottom-0 w-12 bg-gradient-to-r from-transparent via-pink-500/10 to-transparent z-10"
-                  style={{
-                    left: `calc(${10 + barPosition * 0.85}% - 1.5rem)`,
-                    transition: 'left 0.05s linear',
-                  }}
-                />
               </div>
             </div>
           </>
@@ -693,12 +510,7 @@ function App() {
               <span className="text-xs text-slate-600">60 FPS</span>
             </div>
 
-            {/* Canvas for Animation */}
-            <canvas
-              ref={canvasRef}
-              className="w-full h-full"
-              style={{ background: 'transparent' }}
-            />
+            {/* Stage content removed (no waiting animation) - visuals driven by sheet music and server events */}
 
             {/* Overlay gradient for depth */}
             <div className="absolute inset-0 pointer-events-none">

@@ -29,6 +29,10 @@ NOTE_FREQUENCIES = {
 
 # ============ WORKLOAD FUNCTIONS ============
 
+# Optional callback used by external controllers (e.g. cpu_server)
+# Signature: note_callback(note: str, index: int|None)
+note_callback = None
+
 def bubble_sort_light():
     """C note (~10% CPU) - Light load with sleep."""
     # Small matrix ops with sleep - keep this one good
@@ -78,29 +82,26 @@ def particle_collision_heavy():
 
 def matrix_multiply_very_heavy():
     """A note (~85% CPU) - Extreme computation."""
-    # Much larger to push higher
-    a = np.random.rand(1300, 1300)
-    b = np.random.rand(1300, 1300)
+    # Moderate-sized matrices repeated for quicker ramp and responsiveness
+    # Using several smaller multiplies is faster to start and still heavy.
+    a = np.random.rand(800, 800)
+    b = np.random.rand(800, 800)
     result = np.dot(a, b)
+    for _ in range(2):
+        c = np.random.rand(700, 700)
+        result = np.dot(result[:700, :700], c)
     result = np.sin(result) * np.cos(result)
-    c = np.random.rand(1300, 1300)
-    result = np.dot(result, c)
 
 def sudoku_solver_extreme():
     """B note (~100% CPU) - MAXIMUM computation."""
-    # MASSIVELY larger to push to 90%+
-    a = np.random.rand(1700, 1700)
-    b = np.random.rand(1700, 1700)
+    # Large, but composed of many quick multiplies to saturate CPU quickly
+    a = np.random.rand(1200, 1200)
+    b = np.random.rand(1200, 1200)
     result = np.dot(a, b)
-    result = np.sin(result) * np.cos(result)
-
-    c = np.random.rand(1700, 1700)
-    result2 = np.dot(c, result)
-    result2 = np.sqrt(np.abs(result2))
-
-    # Additional computation to really max it out
-    d = np.random.rand(1700, 1700)
-    result3 = np.dot(result2[:1500, :1500], d[:1500, :1500])
+    for _ in range(3):
+        c = np.random.rand(1000, 1000)
+        result = np.dot(result[:1000, :1000], c)
+    result = np.sqrt(np.abs(result))
 
 # ============ WORKER THREADS ============
 
@@ -114,7 +115,7 @@ def play_note_sound(note, duration_ms=500):
     frequency = NOTE_FREQUENCIES.get(note, 440)
     winsound.Beep(frequency, duration_ms)
 
-def run_note_workload(note, num_threads, duration=4, play_sound=False):
+def run_note_workload(note, num_threads, duration=4, play_sound=False, index=None):
     """Run a workload targeting a specific note."""
     workload_map = {
         'C': bubble_sort_light,
@@ -128,6 +129,13 @@ def run_note_workload(note, num_threads, duration=4, play_sound=False):
 
     work_func = workload_map[note]
     print(f"\n[NOTE {note}] Running on {num_threads} threads for {duration}s...")
+
+    # Notify external listeners (e.g. server/frontend) that the note is starting
+    try:
+        if note_callback:
+            note_callback(note, index=index)
+    except Exception:
+        pass
 
     # Play sound at the start if requested
     if play_sound:
@@ -182,7 +190,8 @@ def play_twinkle_twinkle():
     for i, note in enumerate(song, 1):
         print(f"\n[{i}/{len(song)}] Playing note: {note}")
         num_threads = thread_map[note]
-        run_note_workload(note, num_threads, duration=0.5, play_sound=True)
+        # pass index so listeners can sync to the sequence
+        run_note_workload(note, num_threads, duration=0.5, play_sound=True, index=i-1)
         # 1 second delay already in run_note_workload
 
     print("\n" + "="*60)
