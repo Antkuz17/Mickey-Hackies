@@ -10,211 +10,115 @@ const FractalAnimation = () => {
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
-    let width, height;
 
     const resize = () => {
       const parent = canvas.parentElement;
-      const dpr = window.devicePixelRatio || 1;
-
+      // Lower res for performance on pixel shader tasks
+      const dpr = 1; // Keep it 1:1 for performance in fractal math
+      
       canvas.style.width = `${parent.offsetWidth}px`;
       canvas.style.height = `${parent.offsetHeight}px`;
 
       canvas.width = parent.offsetWidth * dpr;
       canvas.height = parent.offsetHeight * dpr;
-
-      width = parent.offsetWidth;
-      height = parent.offsetHeight;
-
-      ctx.scale(dpr, dpr);
     };
     resize();
     window.addEventListener('resize', resize);
 
-    // Fractal flame parameters
-    const particles = [];
-    const maxParticles = 5000;
-    const trailCanvas = document.createElement('canvas');
-    const trailCtx = trailCanvas.getContext('2d');
+    // Fractal Parameters
+    let zoomCenterReal = -0.743643887037158704752191506114774;
+    let zoomCenterImag = 0.131825904205311970493132056385139;
+    let zoomFactor = 1.0;
+    
+    // Color palette
+    const maxIterations = 60;
+    const colors = new Array(maxIterations).fill(0).map((_, i) => {
+        const t = i / maxIterations;
+        const r = Math.floor(9 * (1 - t) * t * t * 255);
+        const g = Math.floor(15 * (1 - t) * (1 - t) * t * 255);
+        const b = Math.floor(8.5 * (1 - t) * (1 - t) * (1 - t) * 255);
+        return `rgb(${r*2},${g*4},${b*8})`; // Boosted colors for "neon" look
+    });
 
-    const initTrailCanvas = () => {
-      trailCanvas.width = canvas.width;
-      trailCanvas.height = canvas.height;
-      trailCtx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
-      trailCtx.fillStyle = '#0f172a';
-      trailCtx.fillRect(0, 0, width, height);
-    };
-    initTrailCanvas();
-
-    // Variation functions for fractal flames
-    const variations = [
-      // Linear
-      (x, y) => ({ x, y }),
-      // Sinusoidal
-      (x, y) => ({ x: Math.sin(x), y: Math.sin(y) }),
-      // Spherical
-      (x, y) => {
-        const r2 = x * x + y * y + 0.0001;
-        return { x: x / r2, y: y / r2 };
-      },
-      // Swirl
-      (x, y) => {
-        const r2 = x * x + y * y;
-        const sinr = Math.sin(r2);
-        const cosr = Math.cos(r2);
-        return { x: x * sinr - y * cosr, y: x * cosr + y * sinr };
-      },
-      // Horseshoe
-      (x, y) => {
-        const r = Math.sqrt(x * x + y * y) + 0.0001;
-        return { x: (x - y) * (x + y) / r, y: 2 * x * y / r };
-      },
-      // Polar
-      (x, y) => {
-        const r = Math.sqrt(x * x + y * y);
-        const theta = Math.atan2(y, x);
-        return { x: theta / Math.PI, y: r - 1 };
-      },
-      // Heart
-      (x, y) => {
-        const r = Math.sqrt(x * x + y * y);
-        const theta = Math.atan2(y, x);
-        return { x: r * Math.sin(theta * r), y: -r * Math.cos(theta * r) };
-      },
-      // Disc
-      (x, y) => {
-        const r = Math.sqrt(x * x + y * y) * Math.PI;
-        const theta = Math.atan2(y, x) / Math.PI;
-        return { x: theta * Math.sin(r), y: theta * Math.cos(r) };
-      },
-    ];
-
-    // Color palette - cyan to purple to pink
-    const getColor = (t, alpha) => {
-      t = ((t % 1) + 1) % 1;
-      let r, g, b;
-      if (t < 0.33) {
-        const p = t / 0.33;
-        r = Math.floor(6 + (168 - 6) * p);
-        g = Math.floor(182 + (85 - 182) * p);
-        b = Math.floor(212 + (247 - 212) * p);
-      } else if (t < 0.66) {
-        const p = (t - 0.33) / 0.33;
-        r = Math.floor(168 + (236 - 168) * p);
-        g = Math.floor(85 + (72 - 85) * p);
-        b = Math.floor(247 + (153 - 247) * p);
-      } else {
-        const p = (t - 0.66) / 0.34;
-        r = Math.floor(236 + (6 - 236) * p);
-        g = Math.floor(72 + (182 - 72) * p);
-        b = Math.floor(153 + (212 - 153) * p);
-      }
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    };
-
-    // Initialize particles
-    class Particle {
-      constructor() {
-        this.reset();
-      }
-
-      reset() {
-        this.x = (Math.random() - 0.5) * 4;
-        this.y = (Math.random() - 0.5) * 4;
-        this.color = Math.random();
-        this.life = 0;
-      }
-
-      update(time) {
-        // Apply random variation
-        const varIndex = Math.floor(Math.random() * variations.length);
-        const variation = variations[varIndex];
-
-        // Add time-based rotation for animation
-        const angle = time * 0.005;
-        const cos = Math.cos(angle);
-        const sin = Math.sin(angle);
-        const rx = this.x * cos - this.y * sin;
-        const ry = this.x * sin + this.y * cos;
-
-        const result = variation(rx, ry);
-        this.x = result.x;
-        this.y = result.y;
-
-        // Slowly shift color
-        this.color += 0.001;
-        this.life++;
-
-        // Reset if out of bounds or too old
-        if (Math.abs(this.x) > 10 || Math.abs(this.y) > 10 || this.life > 500) {
-          this.reset();
+    // Render loop
+    const renderMandelbrot = (width, height) => {
+        // Fast rendering: pixel manipulation
+        const imageData = ctx.createImageData(width, height);
+        const data = imageData.data;
+        
+        // Scale to keep aspect ratio
+        const ratio = width / height;
+        const scale = 3.0 / zoomFactor; 
+        const minReal = zoomCenterReal - scale * ratio / 2;
+        const minImag = zoomCenterImag - scale / 2;
+        
+        // Skip pixels for performance (render every 2nd pixel)
+        // Or render full res but optimize math
+        
+        for (let y = 0; y < height; y++) {
+            const imag = minImag + (y / height) * scale;
+            for (let x = 0; x < width; x++) {
+                const real = minReal + (x / width) * scale * ratio;
+                
+                let zReal = real;
+                let zImag = imag;
+                let n = 0;
+                
+                // Optimized loop
+                for (; n < maxIterations; n++) {
+                    const r2 = zReal * zReal;
+                    const i2 = zImag * zImag;
+                    if (r2 + i2 > 4.0) break;
+                    
+                    zImag = 2.0 * zReal * zImag + imag;
+                    zReal = r2 - i2 + real;
+                }
+                
+                const pixIndex = (y * width + x) * 4;
+                if (n === maxIterations) {
+                    data[pixIndex] = 15;     // R
+                    data[pixIndex + 1] = 23; // G
+                    data[pixIndex + 2] = 42; // B
+                    data[pixIndex + 3] = 255;
+                } else {
+                    // Map interactions to color
+                    // Use simple cyclic coloring
+                    const col = n % 16;
+                    // Cyberpunk palette mapping
+                    const val = n * 4;
+                    data[pixIndex] = (n * 16) % 255;     // R
+                    data[pixIndex + 1] = (n * 32) % 255; // G
+                    data[pixIndex + 2] = (n * 64) % 255; // B
+                    data[pixIndex + 3] = 255;
+                }
+            }
         }
-      }
+        ctx.putImageData(imageData, 0, 0);
+    };
 
-      draw(ctx, width, height) {
-        // Map to screen coordinates
-        const scale = Math.min(width, height) * 0.2;
-        const screenX = width / 2 + this.x * scale;
-        const screenY = height / 2 + this.y * scale;
-
-        if (screenX < 0 || screenX > width || screenY < 0 || screenY > height) return;
-
-        // Fade in based on life
-        const alpha = Math.min(this.life / 20, 0.6);
-        ctx.fillStyle = getColor(this.color, alpha);
-        ctx.fillRect(screenX, screenY, 1.5, 1.5);
-      }
-    }
-
-    // Create particles
-    for (let i = 0; i < maxParticles; i++) {
-      particles.push(new Particle());
-    }
-
-    let time = 0;
-    let cycleStart = Date.now();
+    let start = Date.now();
 
     const animate = () => {
-      time++;
-      const elapsed = Date.now() - cycleStart;
-      const CYCLE_TIME = 350; // Complete fractal cycle in 350ms for instant note switching
+        const width = canvas.width;
+        const height = canvas.height;
+        
+        // Dynamic Zoom
+        const now = Date.now();
+        const t = (now - start) / 1000;
+        zoomFactor = Math.pow(1.5, t % 20); // Reset every 20s equivalent
 
-      // Auto-reset cycle when time expires
-      if (elapsed > CYCLE_TIME) {
-        cycleStart = Date.now();
-      }
-
-      // Fade trail canvas MUCH SLOWER to keep trails longer
-      trailCtx.fillStyle = 'rgba(15, 23, 42, 0.001)'; // Ultra slow fade - keep patterns visible
-      trailCtx.fillRect(0, 0, width, height);
-
-      // Update and draw particles on trail canvas - SUPER FAST: 5x updates
-      for (let i = 0; i < particles.length; i++) {
-        const particle = particles[i];
-        // Update 5 times per frame for extreme speed
-        for (let u = 0; u < 20; u++) {
-          particle.update(time + u);
+        // Reset if zoom gets too deep (loss of float precision) or cyclic
+        if (t > 20) {
+           start = Date.now();
         }
-        particle.draw(trailCtx, width, height);
-      }
 
-      // Copy trail to main canvas
-      ctx.drawImage(trailCanvas, 0, 0, width, height);
-
-      // Add glow effect in center
-      const gradient = ctx.createRadialGradient(
-        width / 2, height / 2, 0,
-        width / 2, height / 2, Math.min(width, height) * 0.4
-      );
-      gradient.addColorStop(0, 'rgba(6, 182, 212, 0.05)');
-      gradient.addColorStop(0.5, 'rgba(168, 85, 247, 0.02)');
-      gradient.addColorStop(1, 'rgba(15, 23, 42, 0)');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, width, height);
-
-      animationRef.current = requestAnimationFrame(animate);
+        renderMandelbrot(width, height);
+        
+        animationRef.current = requestAnimationFrame(animate);
     };
 
-    animationRef.current = requestAnimationFrame(animate);
+    // Initial render
+    animate();
 
     return () => {
       window.removeEventListener('resize', resize);
@@ -225,8 +129,8 @@ const FractalAnimation = () => {
   return (
     <div className="w-full h-full bg-slate-950 relative overflow-hidden flex flex-col">
       <div className="absolute top-4 left-4 z-10 pointer-events-none">
-        <h2 className="text-xl font-bold text-slate-200">Fractal Flames</h2>
-        <p className="text-sm text-slate-500">Iterated function system</p>
+        <h2 className="text-xl font-bold text-slate-200">Fractal Zoom</h2>
+        <p className="text-sm text-slate-500">Mandelbrot Set</p>
       </div>
       <canvas ref={canvasRef} className="block" style={{ width: '100%', height: '100%' }} />
     </div>

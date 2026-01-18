@@ -5,7 +5,10 @@ import BinaryTree from './BinaryTree';
 import CollisionAnimation from './CollisionAnimation';
 import FractalAnimation from './FractalAnimation';
 import CollatzAnimation from './CollatzAnimation';
+import MazeGeneration from './MazeGeneration';
 import InsertionSort from './InsertionSort';
+
+
 
 
 const WEBSOCKET_URL = 'ws://localhost:8767/ws';
@@ -58,10 +61,10 @@ function App() {
             const note = noteSequence[data.index];
             
             const noteToAnimation = {
-              'C': null,           // No animation for C -> Blank
+              'C': 'insertion',    // C = InsertionSort
               'D': 'fractal',      // D = FractalAnimation
               'E': 'tree',         // E = BinaryTree
-              'F': null,           // No animation for F -> Blank
+              'F': 'maze',         // F = MazeGeneration
               'G': 'collision',    // G = CollisionAnimation
               'A': 'collatz',      // A = CollatzAnimation
               'B': null,           // B -> Blank
@@ -405,6 +408,10 @@ function App() {
         ) : viewMode === 'collatz' ? (
           <div className="glass-panel flex-1 relative overflow-hidden">
             <CollatzAnimation />
+          </div>
+        ) : viewMode === 'maze' ? (
+          <div className="glass-panel flex-1 relative overflow-hidden">
+            <MazeGeneration />
           </div>
         ) : viewMode === 'insertion' ? (
           <div className="glass-panel flex-1 relative overflow-hidden">
