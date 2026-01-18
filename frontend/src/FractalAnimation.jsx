@@ -130,7 +130,7 @@ const FractalAnimation = () => {
         const variation = variations[varIndex];
 
         // Add time-based rotation for animation
-        const angle = time * 0.0005;
+        const angle = time * 0.005;
         const cos = Math.cos(angle);
         const sin = Math.sin(angle);
         const rx = this.x * cos - this.y * sin;
@@ -171,17 +171,29 @@ const FractalAnimation = () => {
     }
 
     let time = 0;
+    let cycleStart = Date.now();
 
     const animate = () => {
       time++;
+      const elapsed = Date.now() - cycleStart;
+      const CYCLE_TIME = 350; // Complete fractal cycle in 350ms for instant note switching
 
-      // Fade trail canvas
-      trailCtx.fillStyle = 'rgba(15, 23, 42, 0.03)';
+      // Auto-reset cycle when time expires
+      if (elapsed > CYCLE_TIME) {
+        cycleStart = Date.now();
+      }
+
+      // Fade trail canvas MUCH SLOWER to keep trails longer
+      trailCtx.fillStyle = 'rgba(15, 23, 42, 0.001)'; // Ultra slow fade - keep patterns visible
       trailCtx.fillRect(0, 0, width, height);
 
-      // Update and draw particles on trail canvas
-      for (const particle of particles) {
-        particle.update(time);
+      // Update and draw particles on trail canvas - SUPER FAST: 5x updates
+      for (let i = 0; i < particles.length; i++) {
+        const particle = particles[i];
+        // Update 5 times per frame for extreme speed
+        for (let u = 0; u < 20; u++) {
+          particle.update(time + u);
+        }
         particle.draw(trailCtx, width, height);
       }
 

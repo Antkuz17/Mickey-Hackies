@@ -189,15 +189,14 @@ const BinaryTree = () => {
       const scaledBaseSpread = baseSpreadUnit * scale;
 
       // Animation Loop logic
-      // 1. Grow tree
-      // 2. Wait a bit (progress > MAX + wait)
-      // 3. Reset and Regenerate
+      // 1. Grow tree ULTRA FAST in 350ms
+      // 2. Auto-reset instantly for note switching
 
-      if (progressRef.current < MAX_DEPTH + 3) { // Wait until +3 (arbitrary pause duration)
-        // Faster animation
-        progressRef.current += 0.025;
+      if (progressRef.current < MAX_DEPTH + 1) { // Reduced wait, faster cycle
+        // ULTRA FAST: was 0.35, now 1.0 (instant completion in 350ms)
+        progressRef.current += 1.0;
       } else {
-        // Reset and Regenerate
+        // Reset and Regenerate instantly
         progressRef.current = 1;
         treeDataRef.current = generateTreeData(MAX_DEPTH, generateValue(6));
       }

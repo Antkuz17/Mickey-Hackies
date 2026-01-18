@@ -210,8 +210,8 @@ def create_app():
     return app
 
 if __name__ == "__main__":
-    print("Starting CPU Monitor Server on http://0.0.0.0:8766")
-    print("WebSocket endpoint: ws://localhost:8766/ws")
-    print("HTTP endpoint: http://localhost:8766/cpu")
+    print("Starting CPU Monitor Server on http://0.0.0.0:8767")
+    print("WebSocket endpoint: ws://localhost:8767/ws")
+    print("HTTP endpoint: http://localhost:8767/cpu")
     app = create_app()
-    web.run_app(app, host="0.0.0.0", port=8766)
+    web.run_app(app, host="0.0.0.0", port=8767)

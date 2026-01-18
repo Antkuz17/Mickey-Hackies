@@ -220,7 +220,7 @@ const CollisionAnimation = () => {
         const radius = Math.random() * 20 + 15; // 15-35px radius
         const x = padding + radius + Math.random() * (width - 2 * padding - 2 * radius);
         const y = padding + radius + Math.random() * (height - 2 * padding - 2 * radius);
-        const speed = 4;
+        const speed = 15;
         const angle = Math.random() * Math.PI * 2;
         const vx = Math.cos(angle) * speed * (Math.random() + 0.5);
         const vy = Math.sin(angle) * speed * (Math.random() + 0.5);
@@ -237,6 +237,7 @@ const CollisionAnimation = () => {
 
     // Collision particles for effects
     const particles = [];
+    let cycleStart = Date.now();
 
     const createCollisionParticles = (x, y) => {
       for (let i = 0; i < 8; i++) {
@@ -255,6 +256,15 @@ const CollisionAnimation = () => {
     };
 
     const animate = () => {
+      const elapsed = Date.now() - cycleStart;
+      const CYCLE_TIME = 350; // Complete collision cycle in 350ms for instant note switching
+
+      // Auto-reset cycle
+      if (elapsed > CYCLE_TIME) {
+        cycleStart = Date.now();
+        ballsRef.current = initBalls(); // Reinitialize balls for fresh pattern
+      }
+
       const width = canvas.parentElement.offsetWidth;
       const height = canvas.parentElement.offsetHeight;
       const padding = 40;
@@ -298,11 +308,13 @@ const CollisionAnimation = () => {
       ctx.fillStyle = innerGradient;
       ctx.fill();
 
-      // Update ball positions
+      // Update ball positions - SUPER FAST: 5 updates per frame
       const balls = ballsRef.current;
 
       for (let i = 0; i < balls.length; i++) {
-        balls[i].update(width, height, padding);
+        for (let u = 0; u < 10; u++) {
+          balls[i].update(width, height, padding);
+        }
       }
 
       // Check and resolve collisions (multiple iterations for stability)
@@ -322,12 +334,12 @@ const CollisionAnimation = () => {
         }
       }
 
-      // Update and draw particles
+      // Update and draw particles - SUPER FAST fade
       for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
         p.x += p.vx;
         p.y += p.vy;
-        p.life -= 0.03;
+        p.life -= 0.2;  // was 0.08, now much faster
         p.vx *= 0.98;
         p.vy *= 0.98;
 

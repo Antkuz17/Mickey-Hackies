@@ -53,9 +53,21 @@ const CollatzAnimation = () => {
     let maxValue = Math.max(...sequence);
     let waitingForNext = false;
     let waitStartTime = 0;
+    let allSequences = []; // Store all past sequences with trails
+    let cycleStart = Date.now();
 
-    // Pick new random number
+    // Pick new random number - INSTANT cycle
     const pickNewNumber = () => {
+      cycleStart = Date.now();
+      // Store the current sequence before picking new one
+      if (displayedPoints.length > 0) {
+        allSequences.push({
+          points: [...displayedPoints],
+          maxValue: maxValue,
+          alpha: 0.3 // Fade old sequences
+        });
+      }
+      
       currentNumber = Math.floor(Math.random() * 50) + 1;
       sequence = getCollatzSequence(currentNumber);
       currentStep = 0;
@@ -85,13 +97,13 @@ const CollatzAnimation = () => {
     };
 
     const animate = () => {
-      // Clear with dark background
-      ctx.fillStyle = '#0f172a';
+      // Keep background (don't clear - keep trails)
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.02)'; // Very light fade
       ctx.fillRect(0, 0, width, height);
 
       const padding = 50;
       const graphWidth = width - padding * 2;
-      const graphHeight = height - padding * 2 - 40; // Extra space for title
+      const graphHeight = height - padding * 2 - 40;
 
       // Draw axes
       ctx.strokeStyle = 'rgba(100, 116, 139, 0.3)';
@@ -112,15 +124,15 @@ const CollatzAnimation = () => {
         ctx.stroke();
       }
 
-      // Handle waiting state
+      // Handle waiting state - INSTANT: auto-cycle in 350ms for note switching
       if (waitingForNext) {
         const now = Date.now();
-        if (now - waitStartTime > 2000) {
+        if (now - waitStartTime > 50) {
           pickNewNumber();
         }
       } else {
-        // Animate adding points
-        animationProgress += 0.05;
+        // ULTRA FAST animation: increment progress 3x per frame for instant completion
+        animationProgress += 2.0;  // Was 0.35, now INSTANT
         if (animationProgress >= 1 && currentStep < sequence.length - 1) {
           displayedPoints.push({
             step: currentStep,
@@ -145,9 +157,40 @@ const CollatzAnimation = () => {
         }
       }
 
-      // Draw connecting lines with gradient
+      // Draw OLD sequences with fading trails
+      for (let s = 0; s < allSequences.length; s++) {
+        const seq = allSequences[s];
+        const points = seq.points;
+        
+        if (points.length > 1) {
+          ctx.lineWidth = 1;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+
+          for (let i = 0; i < points.length - 1; i++) {
+            const p1 = points[i];
+            const p2 = points[i + 1];
+
+            const gradient = ctx.createLinearGradient(p1.x, p1.y, p2.x, p2.y);
+            const alpha = 0.2;
+            const c1 = getColor(p1.value, seq.maxValue);
+            const c2 = getColor(p2.value, seq.maxValue);
+            
+            gradient.addColorStop(0, c1.replace(')', `, ${alpha})`).replace('rgb', 'rgba'));
+            gradient.addColorStop(1, c2.replace(')', `, ${alpha})`).replace('rgb', 'rgba'));
+
+            ctx.strokeStyle = gradient;
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.stroke();
+          }
+        }
+      }
+
+      // Draw connecting lines for CURRENT sequence
       if (displayedPoints.length > 1) {
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2.5;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
@@ -167,18 +210,18 @@ const CollatzAnimation = () => {
         }
       }
 
-      // Draw points with glow
+      // Draw points for CURRENT sequence
       for (let i = 0; i < displayedPoints.length; i++) {
         const point = displayedPoints[i];
         const color = getColor(point.value, maxValue);
 
         // Glow
         ctx.shadowColor = color;
-        ctx.shadowBlur = 8;
+        ctx.shadowBlur = 10;
 
         ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.arc(point.x, point.y, 3, 0, Math.PI * 2);
+        ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.shadowBlur = 0;
@@ -199,7 +242,7 @@ const CollatzAnimation = () => {
 
           // Animated line
           ctx.strokeStyle = color;
-          ctx.lineWidth = 2;
+          ctx.lineWidth = 2.5;
           ctx.beginPath();
           ctx.moveTo(lastPoint.x, lastPoint.y);
           ctx.lineTo(currentX, currentY);
@@ -207,10 +250,10 @@ const CollatzAnimation = () => {
 
           // Animated point with larger glow
           ctx.shadowColor = color;
-          ctx.shadowBlur = 15;
+          ctx.shadowBlur = 18;
           ctx.fillStyle = color;
           ctx.beginPath();
-          ctx.arc(currentX, currentY, 5, 0, Math.PI * 2);
+          ctx.arc(currentX, currentY, 6, 0, Math.PI * 2);
           ctx.fill();
           ctx.shadowBlur = 0;
         }
