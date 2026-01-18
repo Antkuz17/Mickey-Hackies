@@ -5,6 +5,8 @@ import BinaryTree from './BinaryTree';
 import CollisionAnimation from './CollisionAnimation';
 import FractalAnimation from './FractalAnimation';
 import CollatzAnimation from './CollatzAnimation';
+import InsertionSort from './InsertionSort';
+
 
 const WEBSOCKET_URL = 'ws://localhost:8767/ws';
 
@@ -20,7 +22,7 @@ function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
   const [activeNoteIndex, setActiveNoteIndex] = useState(0);
-  const [viewMode, setViewMode] = useState('dashboard'); // 'dashboard', 'tree', 'collision', 'fractal', 'collatz'
+  const [viewMode, setViewMode] = useState('dashboard'); // 'dashboard', 'tree', 'collision', 'fractal', 'collatz', 'insertion'
 
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
@@ -403,6 +405,10 @@ function App() {
         ) : viewMode === 'collatz' ? (
           <div className="glass-panel flex-1 relative overflow-hidden">
             <CollatzAnimation />
+          </div>
+        ) : viewMode === 'insertion' ? (
+          <div className="glass-panel flex-1 relative overflow-hidden">
+            <InsertionSort />
           </div>
         ) : (
           <div className="glass-panel flex-1 relative overflow-hidden flex items-center justify-center">
